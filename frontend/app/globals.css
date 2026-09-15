@@ -1,5 +1,7 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+/* NOTE: Google Fonts dimuat via <link> di layout.tsx.
+   @import URL tidak boleh ada di file ini karena Tailwind v4 meng-inline
+   "tailwindcss" menjadi @layer sehingga @import lain jadi invalid. */
 
 /* =============================================
    FANTASY SUPER LEAGUE — DESIGN SYSTEM

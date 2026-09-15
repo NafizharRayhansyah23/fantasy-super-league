@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import { AuthProvider } from "@/lib/auth-context";
 import { Toaster } from "react-hot-toast";
 
-const inter = Inter({ subsets: ["latin"] });
-
+// NOTE: font dimuat via <link> (bukan next/font/google) agar dev/build
+// tidak gagal saat fonts.googleapis.com tidak terjangkau. CSS sudah punya
+// fallback system-ui sehingga halaman tetap tampil tanpa font Google.
 export const metadata: Metadata = {
   title: "Fantasy Super League — Liga Indonesia Fantasy Football",
   description:
@@ -26,7 +26,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id">
-      <body className={inter.className}>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body>
         <AuthProvider>
           <Navbar />
           <main className="page-wrapper">
