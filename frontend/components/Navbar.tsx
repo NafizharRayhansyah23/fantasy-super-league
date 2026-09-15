@@ -31,6 +31,7 @@ export default function Navbar() {
     logout();
     router.push("/");
     setUserMenuOpen(false);
+    setMenuOpen(false);
   };
 
   return (
@@ -145,16 +146,38 @@ export default function Navbar() {
           )}
 
           {/* Mobile menu toggle */}
-          <button
-            className="btn btn-ghost btn-sm"
-            style={{ display: "none" }}
-            onClick={() => setMenuOpen(!menuOpen)}
-            aria-label="Toggle menu"
-          >
-            {menuOpen ? <X size={20} /> : <Menu size={20} />}
-          </button>
+          {isLoggedIn && (
+            <button
+              className="btn btn-ghost btn-sm mobile-menu-toggle"
+              onClick={() => setMenuOpen(!menuOpen)}
+              aria-label="Toggle menu"
+              aria-expanded={menuOpen}
+            >
+              {menuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Mobile dropdown */}
+      {isLoggedIn && menuOpen && (
+        <div className="navbar-mobile-menu">
+          <ul>
+            {navLinks.map(({ href, label, icon: Icon }) => (
+              <li key={href}>
+                <Link
+                  href={href}
+                  className={`navbar-link ${pathname === href ? "active" : ""}`}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <Icon size={16} />
+                  {label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </nav>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -10,8 +10,6 @@ import {
   Player,
   PlayerFilter,
   SaveTeamRequest,
-  TransferRequest,
-  POSITION_LABELS,
   POSITION_SLOTS,
   formatPrice,
 } from "@/lib/api";
@@ -20,12 +18,14 @@ import {
   Save,
   RefreshCw,
   Search,
-  Filter,
   X,
   AlertCircle,
   Check,
   ArrowRight,
 } from "lucide-react";
+
+const getErrorMessage = (err: unknown, fallback: string) =>
+  err instanceof Error ? err.message : fallback;
 
 // --- Types ---
 interface SquadSlot {
@@ -36,6 +36,24 @@ interface SquadSlot {
   isViceCaptain: boolean;
   isStarting: boolean;
 }
+
+// Initialize empty slots (pure, di luar komponen agar stabil)
+const getEmptySlots = (): SquadSlot[] => {
+  const s: SquadSlot[] = [];
+  POSITION_SLOTS.GK.forEach((i) =>
+    s.push({ index: i, position: "GK", player: null, isCaptain: false, isViceCaptain: false, isStarting: i === 0 })
+  );
+  POSITION_SLOTS.DEF.forEach((i) =>
+    s.push({ index: i, position: "DEF", player: null, isCaptain: false, isViceCaptain: false, isStarting: i < 5 })
+  );
+  POSITION_SLOTS.MID.forEach((i) =>
+    s.push({ index: i, position: "MID", player: null, isCaptain: false, isViceCaptain: false, isStarting: i < 10 })
+  );
+  POSITION_SLOTS.FWD.forEach((i) =>
+    s.push({ index: i, position: "FWD", player: null, isCaptain: false, isViceCaptain: false, isStarting: i < 13 })
+  );
+  return s.sort((a, b) => a.index - b.index);
+};
 
 export default function SquadPage() {
   const router = useRouter();
@@ -52,7 +70,6 @@ export default function SquadPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [selectingForSlot, setSelectingForSlot] = useState<number | null>(null);
   const [search, setSearch] = useState("");
-  const [posFilter, setPosFilter] = useState<string | null>(null);
   const [loadingPlayers, setLoadingPlayers] = useState(false);
 
   // UI state
@@ -66,36 +83,7 @@ export default function SquadPage() {
     useWildcard: boolean;
   } | null>(null);
 
-  // Initialize empty slots
-  const getEmptySlots = (): SquadSlot[] => {
-    const s: SquadSlot[] = [];
-    POSITION_SLOTS.GK.forEach((i) =>
-      s.push({ index: i, position: "GK", player: null, isCaptain: false, isViceCaptain: false, isStarting: i === 0 })
-    );
-    POSITION_SLOTS.DEF.forEach((i) =>
-      s.push({ index: i, position: "DEF", player: null, isCaptain: false, isViceCaptain: false, isStarting: i < 5 })
-    );
-    POSITION_SLOTS.MID.forEach((i) =>
-      s.push({ index: i, position: "MID", player: null, isCaptain: false, isViceCaptain: false, isStarting: i < 10 })
-    );
-    POSITION_SLOTS.FWD.forEach((i) =>
-      s.push({ index: i, position: "FWD", player: null, isCaptain: false, isViceCaptain: false, isStarting: i < 13 })
-    );
-    return s.sort((a, b) => a.index - b.index);
-  };
-
-  useEffect(() => {
-    if (!isLoading && !isLoggedIn) {
-      router.push("/auth/login");
-      return;
-    }
-
-    if (isLoggedIn) {
-      loadTeam();
-    }
-  }, [isLoggedIn, isLoading, router]);
-
-  const loadTeam = async () => {
+  const loadTeam = useCallback(async () => {
     setLoading(true);
     try {
       const res = await teamApi.getMyTeam();
@@ -103,7 +91,7 @@ export default function SquadPage() {
       if (res.has_team && res.data) {
         setTeam(res.data);
         setBudget(res.data.remaining_budget);
-        
+
         // Map saved players to slots
         const newSlots = getEmptySlots();
         res.data.players.forEach((p) => {
@@ -130,15 +118,30 @@ export default function SquadPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!isLoading && !isLoggedIn) {
+      router.push("/auth/login");
+      return;
+    }
+
+    if (isLoggedIn) {
+      // Fetch awal saat login — bukan sync state biasa
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadTeam();
+    }
+  }, [isLoggedIn, isLoading, router, loadTeam]);
 
   // Fetch players for modal
   useEffect(() => {
     if (selectingForSlot !== null) {
+      const targetSlot = slots[selectingForSlot];
+      if (!targetSlot) return;
+      const targetPos = targetSlot.position;
       const fetchP = async () => {
         setLoadingPlayers(true);
         try {
-          const targetPos = slots[selectingForSlot].position;
           const filter: PlayerFilter = { position: targetPos, limit: 50 };
           if (search) filter.search = search;
           const res = await playersApi.getAll(filter);
@@ -169,10 +172,11 @@ export default function SquadPage() {
     }
 
     const currentSlot = slots[selectingForSlot];
+    if (!currentSlot) return;
     const playerOut = currentSlot.player;
 
     // If making a transfer on an existing team
-    if (hasTeam && playerOut && initialSlots[selectingForSlot].player?.id === playerOut.id) {
+    if (hasTeam && playerOut && initialSlots[selectingForSlot]?.player?.id === playerOut.id) {
       setTransferPlan({
         slotIdx: selectingForSlot,
         playerOut,
@@ -204,8 +208,8 @@ export default function SquadPage() {
       toast.error("Gunakan fitur transfer untuk mengganti pemain pada tim yang sudah disimpan.");
       return;
     }
-    
-    const playerOut = slots[slotIdx].player;
+
+    const playerOut = slots[slotIdx]?.player;
     if (playerOut) {
       const newSlots = [...slots];
       newSlots[slotIdx] = { ...newSlots[slotIdx], player: null, isCaptain: false, isViceCaptain: false };
@@ -247,8 +251,8 @@ export default function SquadPage() {
       setShowConfirmTransfer(false);
       setTransferPlan(null);
       await loadTeam(); // Reload to get updated budget and transfers
-    } catch (err: any) {
-      toast.error(err.message || "Transfer gagal");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, "Transfer gagal"));
     } finally {
       setSaving(false);
     }
@@ -290,8 +294,8 @@ export default function SquadPage() {
       const res = await teamApi.saveTeam(req);
       toast.success(res.message);
       await loadTeam();
-    } catch (err: any) {
-      toast.error(err.message || "Gagal menyimpan tim");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, "Gagal menyimpan tim"));
     } finally {
       setSaving(false);
     }
@@ -299,10 +303,11 @@ export default function SquadPage() {
 
   // --- Render Helpers ---
 
-  const renderPitchRow = (slotIndices: number[], title: string) => (
-    <div className="pitch-section" style={{ height: "25%", zIndex: 10 }}>
-      {slotIndices.map(idx => {
+  const renderPitchRow = (slotIndices: number[], _title: string, top: string) => (
+    <div className="pitch-section" style={{ top, height: "25%", zIndex: 10 }}>
+      {slotIndices.map((idx) => {
         const slot = slots[idx];
+        if (!slot) return null;
         const p = slot.player;
         
         return (
@@ -445,29 +450,37 @@ export default function SquadPage() {
         {/* PITCH VISUALIZATION */}
         <div className="pitch-container" style={{ margin: "2rem auto" }}>
            <div className="pitch">
-              {/* Goalkeepers */}
-              {renderPitchRow([0], "GK")}
-              {/* Defenders */}
-              <div className="pitch-section" style={{ top: "25%", height: "25%", zIndex: 10 }}>
-                 {[2,3,4,5,6].map(idx => slots[idx].player ? renderPitchRow([idx], "DEF").props.children : renderPitchRow([idx], "DEF").props.children)}
-              </div>
-              {renderPitchRow([2,3,4,5,6], "DEF")}
-              {/* Midfielders */}
-              <div className="pitch-section" style={{ top: "50%", height: "25%", zIndex: 10 }}>
-                 {renderPitchRow([7,8,9,10,11], "MID").props.children}
-              </div>
-              {/* Forwards */}
-              <div className="pitch-section" style={{ top: "75%", height: "25%", zIndex: 10 }}>
-                 {renderPitchRow([12,13,14], "FWD").props.children}
-              </div>
+              {renderPitchRow([0], "GK", "0%")}
+              {renderPitchRow([2, 3, 4, 5, 6], "DEF", "25%")}
+              {renderPitchRow([7, 8, 9, 10, 11], "MID", "50%")}
+              {renderPitchRow([12, 13, 14], "FWD", "75%")}
            </div>
-           
-           {/* Bench / Reserves (Slot 1 for GK, others depending on formation, but we just display the rest) */}
-           <div style={{ marginTop: "1rem", padding: "1rem", background: "rgba(0,0,0,0.3)", borderRadius: 12, display: "flex", justifyContent: "center", gap: "1rem" }}>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", position: "absolute", left: "1rem" }}>Cadangan (TBD)</div>
-              {/* Temporary visual for bench (currently just throwing remaining slots here for simplicity in MVP) */}
+
+           {/* Bench / Reserves */}
+           <div style={{ marginTop: "1rem", padding: "1rem", background: "rgba(0,0,0,0.3)", borderRadius: 12, position: "relative", display: "flex", justifyContent: "center", gap: "1rem" }}>
+              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", position: "absolute", left: "1rem", top: "1rem" }}>Cadangan</div>
               <div style={{ display: "flex", gap: "1rem" }}>
-                 {renderPitchRow([1], "GK2").props.children}
+                 {[1].map((idx) => {
+                    const slot = slots[idx];
+                    const p = slot?.player;
+                    if (!slot) return null;
+                    return (
+                       <div key={idx} className="pitch-player" onClick={() => openPlayerSelect(idx)} style={{ position: "relative" }}>
+                          <div className={`pitch-player-avatar ${!p ? "empty" : ""}`}>
+                             {!p ? "+" : p.photo_url ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={p.photo_url} alt={p.name} />
+                             ) : (
+                                <span style={{ fontSize: "1.5rem" }}>👤</span>
+                             )}
+                          </div>
+                          <div className="pitch-player-name" style={!p ? { background: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.5)" } : undefined}>
+                             {p ? p.name : slot.position}
+                          </div>
+                          {p && <div className="pitch-player-price">{formatPrice(p.price)}</div>}
+                       </div>
+                    );
+                 })}
               </div>
            </div>
         </div>

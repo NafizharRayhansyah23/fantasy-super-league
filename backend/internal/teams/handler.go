@@ -2,6 +2,7 @@ package teams
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 
 	"github.com/fantasysuperleague/backend/internal/models"
