@@ -51,43 +51,64 @@ func (s *Scraper) ScrapeClubs() error {
 	c := newCollector()
 	clubs := []models.Club{}
 
-	c.OnHTML(".club-card, .team-card, [data-club]", func(e *colly.HTMLElement) {
-		name := e.ChildText(".club-name, .team-name, h3, h4")
-		slug := e.Attr("data-slug")
-		logoURL := e.ChildAttr("img", "src")
+	// Struktur aktual ileague.id: .item-team > .info-team h5 (nama),
+	// a[href*=clubs/single] (slug = segmen terakhir, UPPERCASE),
+	// .logo-team img (logo), .group-team (stadion)
+	c.OnHTML(".item-team", func(e *colly.HTMLElement) {
+		name := strings.TrimSpace(e.ChildText(".info-team h5"))
+		href := e.ChildAttr("a[href*='clubs/single']", "href")
+		logoURL := e.ChildAttr(".logo-team img", "src")
+		stadium := strings.TrimSpace(e.ChildText(".group-team"))
 
-		if slug == "" {
-			href := e.ChildAttr("a", "href")
-			parts := strings.Split(href, "/")
+		slug := ""
+		if href != "" {
+			href = strings.Split(href, "?")[0]
+			parts := strings.Split(strings.TrimSuffix(href, "/"), "/")
 			if len(parts) > 0 {
 				slug = parts[len(parts)-1]
 			}
 		}
 
-		if name != "" && slug != "" {
-			tier := 2 // default mid tier
-			bigClubs := []string{"persija", "persib", "bali-united", "arema", "pss-sleman", "borneo"}
-			for _, bc := range bigClubs {
-				if strings.Contains(strings.ToLower(slug), bc) {
-					tier = 1
-					break
-				}
-			}
-
-			clubs = append(clubs, models.Club{
-				ID:      uuid.New().String(),
-				Name:    name,
-				Slug:    slug,
-				LogoURL: ensureAbsURL(logoURL),
-				Tier:    tier,
-			})
+		if name == "" || slug == "" {
+			return
 		}
+
+		tier := 2 // default mid tier
+		lower := strings.ToLower(slug)
+		for _, bc := range []string{"persija", "persib", "arema", "persebaya", "bali", "psm"} {
+			if strings.Contains(lower, bc) {
+				tier = 1
+				break
+			}
+		}
+		for _, sc := range []string{"garudayaksa", "isenmulang", "java_united", "persijap", "psim"} {
+			if strings.Contains(lower, sc) {
+				tier = 3
+				break
+			}
+		}
+
+		clubs = append(clubs, models.Club{
+			ID:        uuid.New().String(),
+			Name:      name,
+			ShortName: shortNameFrom(name),
+			Slug:      slug,
+			LogoURL:   ensureAbsURL(logoURL),
+			Stadium:   stadium,
+			Tier:      tier,
+		})
 	})
 
-	url := fmt.Sprintf("%s/clubs/index/%s", baseURL, leagueSlug)
+	url := fmt.Sprintf("%s/clubs?param=%s", baseURL, leagueSlug)
 	if err := c.Visit(url); err != nil {
 		log.Printf("Warning: could not visit clubs page: %v", err)
 		// Insert default clubs for offline development
+		s.insertDefaultClubs()
+		return nil
+	}
+
+	if len(clubs) == 0 {
+		log.Println("Warning: clubs page parsed 0 clubs (markup may have changed), seeding defaults")
 		s.insertDefaultClubs()
 		return nil
 	}
@@ -133,52 +154,85 @@ func (s *Scraper) ScrapePlayers() error {
 
 func (s *Scraper) scrapeClubPlayers(clubID, clubSlug string, clubTier int) {
 	c := newCollector()
+	inserted, skipped := 0, 0
 
-	c.OnHTML(".player-card, .squad-player, [data-player]", func(e *colly.HTMLElement) {
-		name := e.ChildText(".player-name, .name, h3, h4")
-		position := normalizePosition(e.ChildText(".position, .pos"))
-		photoURL := e.ChildAttr("img.player-photo, img.photo", "src")
-		slug := e.Attr("data-slug")
-		jerseyStr := e.ChildText(".jersey, .number")
-		token := e.Attr("data-token")
-
-		if slug == "" {
-			href := e.ChildAttr("a", "href")
-			parts := strings.Split(href, "/")
-			if len(parts) > 0 {
-				slug = parts[len(parts)-1]
-			}
+	// Struktur aktual ileague.id (tab #squad):
+	// - a[href*=singleplayer] -> slug + ?token=...
+	// - img[alt=foto-pemain] -> foto (ofisial pakai foto-ofisial & tanpa link -> ke-skip)
+	// - td[colspan=2] -> nama, .number-player -> nomor punggung
+	// - baris tabel "Negara" -> kewarganegaraan
+	// CATATAN: situs belum menampilkan posisi pemain, kartu tanpa posisi di-skip
+	// (dikosongkan dulu). Begitu ileague menampilkannya, run ulang scrape ini.
+	c.OnHTML("#squad .item-player", func(e *colly.HTMLElement) {
+		href := e.ChildAttr("a[href*='singleplayer']", "href")
+		photoURL := e.ChildAttr("img[alt='foto-pemain']", "src")
+		name := strings.TrimSpace(e.ChildText("td[colspan='2']"))
+		if href == "" || photoURL == "" || name == "" {
+			return // kartu ofisial / kartu rusak
 		}
 
-		if name == "" || position == "" {
+		slug, token := parsePlayerLink(href)
+		if slug == "" {
 			return
 		}
 
-		jersey, _ := strconv.Atoi(strings.TrimSpace(jerseyStr))
-		isNational := e.ChildText(".national, .timnas") != ""
-		price := scoring.GetPriceByPositionAndTier(position, clubTier, isNational)
+		position, ok := normalizePositionStrict(e.ChildText(".position, .pos, .posisi"))
+		if !ok {
+			skipped++
+			return
+		}
 
-		player := models.Player{
+		jersey, _ := strconv.Atoi(strings.TrimSpace(e.ChildText(".number-player")))
+		nationality := ""
+		e.ForEach("table tr", func(_ int, row *colly.HTMLElement) {
+			cells := row.ChildTexts("td")
+			if len(cells) == 2 && strings.EqualFold(strings.TrimSpace(cells[0]), "negara") {
+				nationality = strings.TrimSpace(cells[1])
+			}
+		})
+		price := scoring.GetPriceByPositionAndTier(position, clubTier, false)
+
+		s.upsertPlayer(models.Player{
 			ID:             uuid.New().String(),
-			Name:           strings.TrimSpace(name),
+			Name:           name,
 			Slug:           slug,
 			ClubID:         clubID,
 			Position:       position,
-			IsNationalTeam: isNational,
+			Nationality:    nationality,
+			IsNationalTeam: false,
 			Price:          price,
 			PhotoURL:       ensureAbsURL(photoURL),
 			IleagueToken:   token,
 			JerseyNumber:   jersey,
 			IsActive:       true,
-		}
-
-		s.upsertPlayer(player)
+		})
+		inserted++
 	})
 
 	url := fmt.Sprintf("%s/clubs/single/%s/%s", baseURL, leagueSlug, clubSlug)
 	if err := c.Visit(url); err != nil {
 		log.Printf("  Warning: could not scrape players for %s: %v", clubSlug, err)
+		return
 	}
+	log.Printf("  %s: %d pemain masuk, %d skip (tanpa posisi)", clubSlug, inserted, skipped)
+}
+
+// parsePlayerLink memecah link detail pemain menjadi slug + token,
+// mis. .../muchamad_aqil_savik?token=XYZ= -> ("muchamad_aqil_savik", "XYZ=")
+func parsePlayerLink(href string) (slug, token string) {
+	parts := strings.SplitN(href, "?", 2)
+	segs := strings.Split(strings.TrimSuffix(parts[0], "/"), "/")
+	if len(segs) > 0 {
+		slug = segs[len(segs)-1]
+	}
+	if len(parts) == 2 {
+		for _, kv := range strings.Split(parts[1], "&") {
+			if k, v, ok := strings.Cut(kv, "="); ok && k == "token" {
+				token = v
+			}
+		}
+	}
+	return slug, token
 }
 
 // ScrapeMatchStats scrapes match stats for a specific gameweek
@@ -300,27 +354,31 @@ func (s *Scraper) calculateGameweekPoints(gwID string) {
 
 func (s *Scraper) upsertClub(club models.Club) {
 	s.db.Exec(`
-		INSERT INTO clubs (id, name, slug, logo_url, tier)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO clubs (id, name, short_name, slug, logo_url, stadium, city, tier)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (slug) DO UPDATE SET
 			name = EXCLUDED.name,
+			short_name = EXCLUDED.short_name,
 			logo_url = EXCLUDED.logo_url,
+			stadium = EXCLUDED.stadium,
+			city = EXCLUDED.city,
 			tier = EXCLUDED.tier
-	`, club.ID, club.Name, club.Slug, club.LogoURL, club.Tier)
+	`, club.ID, club.Name, club.ShortName, club.Slug, club.LogoURL, club.Stadium, club.City, club.Tier)
 }
 
 func (s *Scraper) upsertPlayer(player models.Player) {
 	s.db.Exec(`
-		INSERT INTO players (id, name, slug, club_id, position, is_national_team, price, photo_url, ileague_token, jersey_number)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO players (id, name, slug, club_id, position, nationality, is_national_team, price, photo_url, ileague_token, jersey_number)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT (slug) DO UPDATE SET
 			name = EXCLUDED.name,
 			club_id = EXCLUDED.club_id,
 			position = EXCLUDED.position,
+			nationality = EXCLUDED.nationality,
 			price = EXCLUDED.price,
 			photo_url = EXCLUDED.photo_url,
 			updated_at = NOW()
-	`, player.ID, player.Name, player.Slug, player.ClubID, player.Position,
+	`, player.ID, player.Name, player.Slug, player.ClubID, player.Position, player.Nationality,
 		player.IsNationalTeam, player.Price, player.PhotoURL, player.IleagueToken, player.JerseyNumber)
 }
 
@@ -342,29 +400,30 @@ func (s *Scraper) upsertPlayerStats(stats models.PlayerStats) {
 // insertDefaultClubs seeds known Liga 1 clubs for offline dev
 func (s *Scraper) insertDefaultClubs() {
 	defaultClubs := []struct {
-		name      string
-		shortName string
-		slug      string
-		stadium   string
-		city      string
-		tier      int
+		name    string
+		slug    string
+		stadium string
+		city    string
+		tier    int
 	}{
-		{"Persija Jakarta", "PJK", "persija-jakarta", "Gelora Bung Karno", "Jakarta", 1},
-		{"Persib Bandung", "PIB", "persib-bandung", "Gelora Bandung Lautan Api", "Bandung", 1},
-		{"Bali United", "BAL", "bali-united", "Kapten I Wayan Dipta", "Gianyar", 1},
-		{"Arema FC", "ARM", "arema-fc", "Kanjuruhan", "Malang", 1},
-		{"PSS Sleman", "PSS", "pss-sleman", "Maguwoharjo", "Sleman", 2},
-		{"Borneo FC", "BFC", "borneo-fc", "Segiri", "Samarinda", 2},
-		{"PSIS Semarang", "PSI", "psis-semarang", "Jatidiri", "Semarang", 2},
-		{"Persebaya Surabaya", "PBS", "persebaya-surabaya", "Gelora Bung Tomo", "Surabaya", 2},
-		{"Madura United", "MDU", "madura-united", "Gelora Ratu Pamelingan", "Pamekasan", 2},
-		{"Dewa United", "DWU", "dewa-united", "Indomilk Arena", "Tangerang", 2},
-		{"Persis Solo", "PRS", "persis-solo", "Manahan", "Solo", 2},
-		{"Persik Kediri", "PRK", "persik-kediri", "Brawijaya", "Kediri", 3},
-		{"PSBS Biak", "PSB", "psbs-biak", "Mandala Jayapura", "Biak", 3},
-		{"Malut United", "MLU", "malut-united", "Gelora Kie Raha", "Ternate", 3},
-		{"Semen Padang", "SMP", "semen-padang", "Haji Agus Salim", "Padang", 3},
-		{"Barito Putera", "BAP", "barito-putera", "17 Mei", "Banjarmasin", 3},
+		{"AREMA FC", "AREMA_FC", "Kanjuruhan", "Malang", 1},
+		{"BALI UNITED FC", "BALI_UNITED_FC", "Kapten I Wayan Dipta", "Gianyar", 1},
+		{"BHAYANGKARA PRESISI LAMPUNG FC", "BHAYANGKARA_PRESISI_LAMPUNG_FC", "PKOR Sumpah Pemuda", "Lampung", 2},
+		{"BORNEO FC SAMARINDA", "BORNEO_FC_SAMARINDA", "Segiri", "Samarinda", 2},
+		{"DEWA UNITED BANTEN FC", "DEWA_UNITED_BANTEN_FC", "Banten International Stadium", "Serang", 2},
+		{"GARUDAYAKSA FC", "GARUDAYAKSA_FC", "Pakansari", "Bogor", 3},
+		{"ISENMULANG KALTENG FC", "ISENMULANG_KALTENG_FC", "Tuah Pahoe", "Palangka Raya", 3},
+		{"JAVA UNITED FC", "JAVA_UNITED_FC", "Jatidiri", "Semarang", 3},
+		{"MADURA UNITED FC", "MADURA_UNITED_FC", "Gelora Madura Ratu Pamelingan", "Pamekasan", 2},
+		{"PERSEBAYA SURABAYA", "PERSEBAYA_SURABAYA", "Gelora Bung Tomo", "Surabaya", 1},
+		{"PERSIB BANDUNG", "PERSIB_BANDUNG", "Gelora Bandung Lautan Api", "Bandung", 1},
+		{"PERSIJA JAKARTA", "PERSIJA_JAKARTA", "Gelora Bung Karno", "Jakarta", 1},
+		{"PERSIJAP JEPARA", "PERSIJAP_JEPARA", "Gelora Bumi Kartini", "Jepara", 3},
+		{"PERSIK KEDIRI", "PERSIK_KEDIRI", "Brawijaya", "Kediri", 2},
+		{"PERSITA", "PERSITA", "Indomilk Arena", "Tangerang", 2},
+		{"PSIM YOGYAKARTA", "PSIM_YOGYAKARTA", "Sultan Agung", "Yogyakarta", 3},
+		{"PSM MAKASSAR", "PSM_MAKASSAR", "Gelora B.J. Habibie", "Makassar", 1},
+		{"PSS SLEMAN", "PSS_SLEMAN_", "Maguwoharjo", "Sleman", 2},
 	}
 
 	for _, club := range defaultClubs {
@@ -372,7 +431,7 @@ func (s *Scraper) insertDefaultClubs() {
 			INSERT INTO clubs (id, name, short_name, slug, stadium, city, tier)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			ON CONFLICT (slug) DO NOTHING
-		`, uuid.New().String(), club.name, club.shortName, club.slug, club.stadium, club.city, club.tier)
+		`, uuid.New().String(), club.name, shortNameFrom(club.name), club.slug, club.stadium, club.city, club.tier)
 	}
 	log.Printf("✅ Inserted %d default clubs", len(defaultClubs))
 }
@@ -384,23 +443,48 @@ func newCollector() *colly.Collector {
 		colly.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"),
 		colly.AllowURLRevisit(),
 	)
-	c.SetRequestTimeout(30 * time.Second)
+	// ileague.id lambat di balik Cloudflare, kasih timeout longgar
+	c.SetRequestTimeout(90 * time.Second)
 	return c
 }
 
+// shortNameFrom membuat singkatan dari inisial tiap kata, mis. "PERSIJA JAKARTA" -> "PJ"
+func shortNameFrom(name string) string {
+	words := strings.Fields(strings.ToUpper(name))
+	var b strings.Builder
+	for _, w := range words {
+		if len(w) == 0 {
+			continue
+		}
+		b.WriteByte(w[0])
+		if b.Len() >= 3 {
+			break
+		}
+	}
+	return b.String()
+}
+
 func normalizePosition(raw string) string {
+	pos, _ := normalizePositionStrict(raw)
+	return pos
+}
+
+// normalizePositionStrict memetakan teks posisi ke GK/DEF/MID/FWD.
+// ok=false bila teks kosong / tidak dikenal -> panggilannya bisa skip
+// (jangan tebak posisi pemain).
+func normalizePositionStrict(raw string) (pos string, ok bool) {
 	upper := strings.ToUpper(strings.TrimSpace(raw))
 	switch {
 	case upper == "GK" || upper == "GOALKEEPER" || upper == "KIPER" || upper == "PENJAGA GAWANG":
-		return "GK"
-	case upper == "DEF" || upper == "DEFENDER" || upper == "CB" || upper == "LB" || upper == "RB" || upper == "BEK":
-		return "DEF"
-	case upper == "MID" || upper == "MIDFIELDER" || upper == "CM" || upper == "AM" || upper == "DM" || upper == "GELANDANG":
-		return "MID"
-	case upper == "FWD" || upper == "FORWARD" || upper == "ST" || upper == "CF" || upper == "LW" || upper == "RW" || upper == "STRIKER" || upper == "PENYERANG":
-		return "FWD"
+		return "GK", true
+	case upper == "DEF" || upper == "DEFENDER" || upper == "CB" || upper == "LB" || upper == "RB" || upper == "BEK" || upper == "BELAKANG" || upper == "BERTAHAN":
+		return "DEF", true
+	case upper == "MID" || upper == "MIDFIELDER" || upper == "CM" || upper == "CDM" || upper == "CAM" || upper == "AM" || upper == "DM" || upper == "GELANDANG" || upper == "TENGAH":
+		return "MID", true
+	case upper == "FWD" || upper == "FORWARD" || upper == "ST" || upper == "CF" || upper == "LW" || upper == "RW" || upper == "STRIKER" || upper == "PENYERANG" || upper == "DEPAN":
+		return "FWD", true
 	default:
-		return "MID" // default fallback
+		return "MID", false
 	}
 }
 
