@@ -14,6 +14,7 @@ import {
   formatPrice,
 } from "@/lib/api";
 import toast from "react-hot-toast";
+import PlayerAvatar from "@/components/PlayerAvatar";
 import {
   Save,
   RefreshCw,
@@ -317,12 +318,7 @@ export default function SquadPage() {
                 "+"
               ) : (
                 <>
-                  {p.photo_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.photo_url} alt={p.name} />
-                  ) : (
-                    <span style={{ fontSize: "1.5rem" }}>👤</span>
-                  )}
+                  <PlayerAvatar key={p.id} src={p.photo_url} alt={p.name} />
                   {slot.isCaptain && <div className="captain-badge">C</div>}
                   {slot.isViceCaptain && <div className="captain-badge" style={{ background: "var(--bg-elevated)", color: "#fff", border: "1px solid var(--fsl-gold)" }}>V</div>}
                   {!hasTeam && (
@@ -466,14 +462,11 @@ export default function SquadPage() {
                     if (!slot) return null;
                     return (
                        <div key={idx} className="pitch-player" onClick={() => openPlayerSelect(idx)} style={{ position: "relative" }}>
-                          <div className={`pitch-player-avatar ${!p ? "empty" : ""}`}>
-                             {!p ? "+" : p.photo_url ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={p.photo_url} alt={p.name} />
-                             ) : (
-                                <span style={{ fontSize: "1.5rem" }}>👤</span>
-                             )}
-                          </div>
+                           <div className={`pitch-player-avatar ${!p ? "empty" : ""}`}>
+                              {!p ? "+" : (
+                                 <PlayerAvatar key={p.id} src={p.photo_url} alt={p.name} />
+                              )}
+                           </div>
                           <div className="pitch-player-name" style={!p ? { background: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.5)" } : undefined}>
                              {p ? p.name : slot.position}
                           </div>
@@ -533,8 +526,8 @@ export default function SquadPage() {
                         }}
                         onClick={() => !isSelected && handleSelectPlayer(p)}
                       >
-                        <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--bg-elevated)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                           {p.photo_url ? <img src={p.photo_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "👤"}
+                        <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--bg-elevated)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                           <PlayerAvatar key={p.id} src={p.photo_url} alt={p.name} />
                         </div>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{p.name}</div>

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { playersApi, clubsApi, Player, Club, PlayerFilter, formatPrice, POSITION_LABELS } from "@/lib/api";
 import { Search, Filter, ChevronLeft, ChevronRight, Star } from "lucide-react";
+import PlayerAvatar from "@/components/PlayerAvatar";
 
 const POSITIONS = ["GK", "DEF", "MID", "FWD"];
 
@@ -17,19 +18,7 @@ function PlayerCard({ player, onSelect }: { player: Player; onSelect?: (p: Playe
     >
       {/* Photo */}
       <div style={{ position: "relative" }}>
-        {player.photo_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={player.photo_url}
-            alt={player.name}
-            className="player-card-photo"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
-        ) : (
-          <div className="player-card-photo-placeholder">👤</div>
-        )}
+        <PlayerAvatar key={player.id} src={player.photo_url} alt={player.name} className="player-card-photo" />
         <div style={{ position: "absolute", top: 8, right: 8 }}>
           <span className={`badge ${posClass}`}>{player.position}</span>
         </div>
@@ -302,14 +291,11 @@ export default function PlayersPage() {
                   fontSize: "3rem",
                 }}
               >
-                {selectedPlayer.photo_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={selectedPlayer.photo_url}
-                    alt={selectedPlayer.name}
-                    style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }}
-                  />
-                ) : "👤"}
+                <PlayerAvatar
+                  key={selectedPlayer.id}
+                  src={selectedPlayer.photo_url}
+                  alt={selectedPlayer.name}
+                />
               </div>
 
               <div style={{ flex: 1 }}>
