@@ -313,29 +313,122 @@ func resolvePosition(card ileagueCard) (position, source string) {
 }
 
 // knownPositions berisi pemain yang posisinya dipastikan dari pengetahuan
-// umum (timnas & pemain asing top). Kunci = nama lengkap ternormalisasi.
+// umum (timnas, eks-timnas, asing top, veteran). Kunci = nama lengkap.
 // Hanya yang high-confidence; sisanya lewat nomor punggung / koreksi CSV.
 var knownPositions = map[string]string{
 	// --- Kiper ---
-	"nadeo arga winata":   "GK",
-	"muchamad aqil savik": "GK",
+	"nadeo arga winata":              "GK",
+	"muchamad aqil savik":            "GK",
+	"syahrul trisna fadillah":        "GK",
+	"muhammad adi satryo":            "GK",
+	"gianluca claudio pandeynuwu":    "GK",
+	"awan setho raharjo":             "GK",
+	"muhammad ridho":                 "GK",
+	"sonny ricardo marciano stevens": "GK",
+	"miswar saputra nurdin":          "GK",
+	"cyrus ashkon margono":           "GK",
+	"ernando ari sutaryadi":          "GK",
+	"m reza arya pratama":            "GK",
+	"teja paku alam":                 "GK",
+	"andritany ardhiyasa":            "GK",
+	"cahya supriadi":                 "GK",
+	"kurniawan kartika ajie":         "GK",
+	"hilman syah":                    "GK",
+	"ega rizky pramana":              "GK",
+	"fitrul dwi rustapa":             "GK",
 	// --- Bek ---
-	"rizky ridho ramadhani": "DEF",
-	"jordi amat":            "DEF",
-	"shayne pattynama":      "DEF",
-	"pratama arhan":         "DEF",
-	"ilham rio fahmi":       "DEF",
-	"radovan pankov":        "DEF",
-	"nathan tjoe a on":      "DEF",
-	"bagas adi nugroho":     "DEF",
-	"rio fahmi":             "DEF",
+	"rizky ridho ramadhani":       "DEF",
+	"jordi amat":                  "DEF",
+	"shayne pattynama":            "DEF",
+	"pratama arhan":               "DEF",
+	"ilham rio fahmi":             "DEF",
+	"radovan pankov":              "DEF",
+	"bagas adi nugroho":           "DEF",
+	"rio fahmi":                   "DEF",
+	"hansamu yama pranata":        "DEF",
+	"alfeandra dewangga santosa":  "DEF",
+	"johan ahmat farizi":          "DEF",
+	"thomas anton rudolph lam":    "DEF",
+	"rizky dwi febrianto":         "DEF",
+	"tim henri victor geypens":    "DEF",
+	"ricky fajrin saputra":        "DEF",
+	"muhammad ferarri":            "DEF",
+	"frengky deaner missa":        "DEF",
+	"muhammad rifad marasabessy":  "DEF",
+	"komang teguh trisnanda":      "DEF",
+	"diego robbie michiels":       "DEF",
+	"reva adi utama":              "DEF",
+	"damion onandi lowe":          "DEF",
+	"alta ballah":                 "DEF",
+	"moh edo febriansah":          "DEF",
+	"yance sayuri":                "DEF",
+	"sandy henny walsh":           "DEF",
+	"patricio martin matricardi":  "DEF",
+	"danijel loncar":              "DEF",
+	"denis kolinger":              "DEF",
+	"muhammad fajar fathurrahman": "DEF",
+	"dony tri pamungkas":          "DEF",
+	"koko ari araya":              "DEF",
+	"brandon marsel scheunemann":  "DEF",
+	"ardi idrus":                  "DEF",
+	"victor luiz prestes filho":   "DEF",
+	"dusan lagator":               "DEF",
+	"henhen herdiana":             "DEF",
+	"fachruddin wahyudi aryanto":  "DEF",
+	"jajang mulyana":              "DEF",
+	"christophe nduwarugira":      "DEF",
 	// --- Gelandang ---
-	"witan sulaiman":  "MID",
-	"kwon chang hoon": "MID",
-	"kwon changhoon":  "MID",
+	"witan sulaiman":                       "MID",
+	"kwon chang hoon":                      "MID",
+	"kwon changhoon":                       "MID",
+	"dendi santoso":                        "MID",
+	"septian david maulana":                "MID",
+	"brandon james wilson":                 "MID",
+	"tim charles pieter receveur":          "MID",
+	"i kadek agung widnyana putra":         "MID",
+	"irfan jaya":                           "MID",
+	"moussa sidibe":                        "MID",
+	"ryan kurnia":                          "MID",
+	"jefferson brenes rojas":               "MID",
+	"ivar jenner":                          "MID",
+	"ricki kambuaya":                       "MID",
+	"alexis nahuel messidoro":              "MID",
+	"paulo oktavianus sitanggang":          "MID",
+	"paulo domingos gali da costa freitas": "MID",
+	"hugo gomes dos santos silva":          "MID",
+	"frets listanto butuan":                "MID",
+	"abrizal umanailo":                     "MID",
+	"krisna bayu otto kartika":             "MID",
+	"tyronne gustavo del pino ramos":       "MID",
+	"ahmad agung setia budi":               "MID",
+	"riyatno abiyoso":                      "MID",
+	"malik risaldi":                        "MID",
+	"rachmat irianto":                      "MID",
+	"marc anthony klok":                    "MID",
+	"thom jan marinus haye":                "MID",
+	"gakuto notsuda":                       "MID",
+	"adam alis setyano":                    "MID",
+	"ragnar anthonius maria oratmangoen":   "MID",
+	"saddil ramdani":                       "MID",
+	"fabio da silva calonego":              "MID",
+	"stjepan loncar":                       "MID",
+	"ananda raehan alief":                  "MID",
+	"kodai tanaka":                         "MID",
+	"riko simanjuntak":                     "MID",
+	"kim jeffrey kurniawan":                "MID",
+	"yakob sayuri":                         "MID",
 	// --- Penyerang ---
-	"alexander jeremejeff": "FWD",
-	"ramadhan sananta":     "FWD",
+	"alexander jeremejeff":           "FWD",
+	"ramadhan sananta":               "FWD",
+	"ivan mamut":                     "FWD",
+	"eksel timothy joseph runtukahu": "FWD",
+	"mohammad rafli ariyanto":        "FWD",
+	"david aparecido da silva":       "FWD",
+	"jens raven":                     "FWD",
+	"adrian dalmau vaquer":           "FWD",
+	"nermin haljeta":                 "FWD",
+	"muhammad dimas drajad":          "FWD",
+	"rafael william struick":         "FWD",
 }
 
 // normTokens menormalisasi nama menjadi token-token huruf kecil.
@@ -348,8 +441,10 @@ func normTokens(s string) []string {
 }
 
 // matchKnownPlayer mencocokkan kartu (nama + slug ileague) dengan knownPositions.
-// Butuh >=2 token bermakna yang sama — token tunggal seperti "NATHAN" saja
-// tidak cukup (bisa orang berbeda, mis. Nathan Kusuma vs Nathan Tjoe-A-On).
+// Butuh >=2 token SAMA PERSIS (min 3 huruf) — tanpa tebak inisial, tanpa
+// token umum. Ini mencegah false positive seperti "M. DYAR" -> Marasabessy
+// (berbagi "muhammad") atau "NATHAN" -> Tjoe-A-On (satu nama depan sama
+// tapi orang berbeda). Hasil deterministik (tak tergantung urutan map).
 func matchKnownPlayer(cardName, cardSlug string) (string, bool) {
 	combined := append(normTokens(cardName), normTokens(cardSlug)...)
 	if len(combined) == 0 {
@@ -357,7 +452,7 @@ func matchKnownPlayer(cardName, cardSlug string) (string, bool) {
 	}
 	bestPos, bestShared := "", 0
 	for known, pos := range knownPositions {
-		if shared := sharedTokens(combined, normTokens(known)); shared > bestShared {
+		if shared := sharedFullTokens(combined, normTokens(known)); shared > bestShared {
 			bestPos, bestShared = pos, shared
 		}
 	}
@@ -367,19 +462,30 @@ func matchKnownPlayer(cardName, cardSlug string) (string, bool) {
 	return "", false
 }
 
-func sharedTokens(a, b []string) int {
+// stopTokens adalah partikel nama yang terlalu umum untuk dijadikan bukti
+// (gelar, patronimik Bali, partikel Portugis) — diabaikan saat mencocokkan.
+var stopTokens = map[string]bool{
+	"muhammad": true, "mohammad": true, "moh": true,
+	"putra": true, "putri": true,
+	"dos": true, "das": true, "del": true,
+}
+
+func sharedFullTokens(a, b []string) int {
 	seen := map[string]bool{}
+	setB := map[string]bool{}
+	for _, y := range b {
+		if len(y) >= 3 && !stopTokens[y] {
+			setB[y] = true
+		}
+	}
 	shared := 0
 	for _, x := range a {
-		if seen[x] {
-			continue // nama & slug sering memuat token yang sama
+		if len(x) < 3 || stopTokens[x] || seen[x] {
+			continue // abaikan token pendek/umum & ganda (nama & slug sering sama)
 		}
 		seen[x] = true
-		for _, y := range b {
-			if (x == y && len(x) >= 3) || (len(x) == 1 && strings.HasPrefix(y, x)) {
-				shared++
-				break
-			}
+		if setB[x] {
+			shared++
 		}
 	}
 	return shared
