@@ -15,8 +15,9 @@ import (
 func main() {
 	godotenv.Load()
 
-	action := flag.String("action", "all", "Action: all | clubs | players | stats")
+	action := flag.String("action", "all", "Action: all | clubs | players | stats | import")
 	gameweek := flag.Int("gw", 0, "Gameweek number (for stats action)")
+	file := flag.String("file", "position_review.csv", "CSV file (for import action)")
 	flag.Parse()
 
 	db, err := database.Connect()
@@ -59,9 +60,13 @@ func main() {
 		if err := s.ScrapeMatchStats(*gameweek); err != nil {
 			log.Fatalf("Scrape stats failed: %v", err)
 		}
+	case "import":
+		if err := s.ImportPositions(*file); err != nil {
+			log.Fatalf("Import failed: %v", err)
+		}
 	default:
 		fmt.Printf("Unknown action: %s\n", *action)
-		fmt.Println("Available: all | clubs | players | stats")
+		fmt.Println("Available: all | clubs | players | stats | import")
 		os.Exit(1)
 	}
 }
