@@ -49,6 +49,7 @@ func Connect() (*sql.DB, error) {
 // Migrate runs all database migrations in order
 func Migrate(db *sql.DB) error {
 	migrations := []string{
+		`CREATE EXTENSION IF NOT EXISTS unaccent`,
 		createUsersTable,
 		createClubsTable,
 		createPlayersTable,
