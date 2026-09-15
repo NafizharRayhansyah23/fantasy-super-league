@@ -161,27 +161,66 @@ func (s *Scraper) scrapeClubPlayers(clubID, clubSlug string, clubTier int) {
 	// - img[alt=foto-pemain] -> foto (ofisial pakai foto-ofisial & tanpa link -> ke-skip)
 	// - td[colspan=2] -> nama, .number-player -> nomor punggung
 	// - baris tabel "Negara" -> kewarganegaraan
-	// CATATAN: situs belum menampilkan posisi pemain, kartu tanpa posisi di-skip
-	// (dikosongkan dulu). Begitu ileague menampilkannya, run ulang scrape ini.
+	// Situs belum menampilkan posisi pemain, jadi dipakai inferensi nomor
+	// punggung (konvensi umum, ala klasifikasi FPL: winger = MID).
+	// Bila situs suatu saat menampilkan posisi, RawPosition dipakai dulu.
+	// Nomor yang tidak konklusif di-skip (tidak ditebak).
+	for _, card := range fetchIleagueCards(c, clubSlug) {
+		position, ok := normalizePositionStrict(card.RawPosition)
+		if !ok {
+			position, ok = inferPositionByNumber(card.Jersey)
+		}
+		if !ok {
+			skipped++
+			continue
+		}
+		price := scoring.GetPriceByPositionAndTier(position, clubTier, false)
+		s.upsertPlayer(models.Player{
+			ID:             uuid.New().String(),
+			Name:           card.Name,
+			Slug:           card.Slug,
+			ClubID:         clubID,
+			Position:       position,
+			Nationality:    card.Nationality,
+			IsNationalTeam: false,
+			Price:          price,
+			PhotoURL:       card.PhotoURL,
+			IleagueToken:   card.Token,
+			JerseyNumber:   card.Jersey,
+			IsActive:       true,
+		})
+		inserted++
+	}
+	log.Printf("  %s: %d pemain masuk, %d skip (tanpa posisi)", clubSlug, inserted, skipped)
+}
+
+// ileagueCard adalah satu kartu pemain di tab #squad halaman klub.
+type ileagueCard struct {
+	Name         string
+	Slug         string
+	Token        string
+	PhotoURL     string
+	Nationality  string
+	Jersey       int
+	RawPosition  string // kosong di markup saat ini; siap bila situs menampilkannya
+}
+
+// fetchIleagueCards mengambil semua kartu pemain (#squad .item-player) sebuah klub.
+// Kartu ofisial (foto-ofisial / tanpa link singleplayer) otomatis terfilter.
+func fetchIleagueCards(c *colly.Collector, clubSlug string) []ileagueCard {
+	cards := []ileagueCard{}
+
 	c.OnHTML("#squad .item-player", func(e *colly.HTMLElement) {
 		href := e.ChildAttr("a[href*='singleplayer']", "href")
 		photoURL := e.ChildAttr("img[alt='foto-pemain']", "src")
 		name := strings.TrimSpace(e.ChildText("td[colspan='2']"))
 		if href == "" || photoURL == "" || name == "" {
-			return // kartu ofisial / kartu rusak
+			return
 		}
-
 		slug, token := parsePlayerLink(href)
 		if slug == "" {
 			return
 		}
-
-		position, ok := normalizePositionStrict(e.ChildText(".position, .pos, .posisi"))
-		if !ok {
-			skipped++
-			return
-		}
-
 		jersey, _ := strconv.Atoi(strings.TrimSpace(e.ChildText(".number-player")))
 		nationality := ""
 		e.ForEach("table tr", func(_ int, row *colly.HTMLElement) {
@@ -190,31 +229,40 @@ func (s *Scraper) scrapeClubPlayers(clubID, clubSlug string, clubTier int) {
 				nationality = strings.TrimSpace(cells[1])
 			}
 		})
-		price := scoring.GetPriceByPositionAndTier(position, clubTier, false)
-
-		s.upsertPlayer(models.Player{
-			ID:             uuid.New().String(),
-			Name:           name,
-			Slug:           slug,
-			ClubID:         clubID,
-			Position:       position,
-			Nationality:    nationality,
-			IsNationalTeam: false,
-			Price:          price,
-			PhotoURL:       ensureAbsURL(photoURL),
-			IleagueToken:   token,
-			JerseyNumber:   jersey,
-			IsActive:       true,
+		cards = append(cards, ileagueCard{
+			Name:        name,
+			Slug:        slug,
+			Token:       token,
+			PhotoURL:    ensureAbsURL(photoURL),
+			Nationality: nationality,
+			Jersey:      jersey,
+			RawPosition: strings.TrimSpace(e.ChildText(".position, .pos, .posisi")),
 		})
-		inserted++
 	})
 
 	url := fmt.Sprintf("%s/clubs/single/%s/%s", baseURL, leagueSlug, clubSlug)
 	if err := c.Visit(url); err != nil {
 		log.Printf("  Warning: could not scrape players for %s: %v", clubSlug, err)
-		return
+		return nil
 	}
-	log.Printf("  %s: %d pemain masuk, %d skip (tanpa posisi)", clubSlug, inserted, skipped)
+	return cards
+}
+
+// inferPositionByNumber menebak posisi dari nomor punggung.
+// Hanya nomor-nomor klasik yang hampir pasti (ok=true); sisanya ok=false
+// agar tidak mengarang posisi pemain.
+func inferPositionByNumber(jersey int) (string, bool) {
+	switch jersey {
+	case 1:
+		return "GK", true // hampir selalu kiper utama
+	case 2, 3, 4, 5:
+		return "DEF", true // nomor bek klasik (RB/LB/CB)
+	case 7, 8, 10, 11:
+		return "MID", true // winger & playmaker
+	case 9:
+		return "FWD", true // striker klasik
+	}
+	return "", false
 }
 
 // parsePlayerLink memecah link detail pemain menjadi slug + token,
