@@ -27,3 +27,6 @@ backend/backend.exe
 *.pem
 .idea/
 .vscode/
+
+# Generated position review working file (local workflow, jangan di-commit)
+position_review.csv

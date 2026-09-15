@@ -2,8 +2,10 @@ package scraper
 
 import (
 	"database/sql"
+	"encoding/csv"
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -125,7 +127,7 @@ func (s *Scraper) ScrapeClubs() error {
 func (s *Scraper) ScrapePlayers() error {
 	log.Println("👤 Scraping players from all clubs...")
 
-	rows, err := s.db.Query("SELECT id, slug, tier FROM clubs")
+	rows, err := s.db.Query("SELECT id, name, slug, tier FROM clubs ORDER BY name")
 	if err != nil {
 		return err
 	}
@@ -133,47 +135,143 @@ func (s *Scraper) ScrapePlayers() error {
 
 	type clubInfo struct {
 		ID   string
+		Name string
 		Slug string
 		Tier int
 	}
 	clubs := []clubInfo{}
 	for rows.Next() {
 		var ci clubInfo
-		rows.Scan(&ci.ID, &ci.Slug, &ci.Tier)
+		rows.Scan(&ci.ID, &ci.Name, &ci.Slug, &ci.Tier)
 		clubs = append(clubs, ci)
 	}
 
+	review := []reviewRow{}
 	for _, club := range clubs {
 		log.Printf("  Scraping players for club: %s", club.Slug)
-		s.scrapeClubPlayers(club.ID, club.Slug, club.Tier)
+		s.scrapeClubPlayers(club.ID, club.Name, club.Slug, club.Tier, &review)
 		time.Sleep(500 * time.Millisecond) // polite delay
 	}
 
+	if len(review) > 0 {
+		if err := writeReviewCSV("position_review.csv", review); err != nil {
+			log.Printf("Warning: gagal tulis position_review.csv: %v", err)
+		} else {
+			log.Printf("📝 File review posisi: position_review.csv (%d baris)", len(review))
+		}
+	}
 	return nil
 }
 
-func (s *Scraper) scrapeClubPlayers(clubID, clubSlug string, clubTier int) {
+// reviewRow mencatat asal posisi tiap pemain untuk dikoreksi manual.
+// Kolom source: ileague | known | number | fallback.
+type reviewRow struct {
+	Slug, Name, Club string
+	Jersey           int
+	Position, Source string
+}
+
+func writeReviewCSV(path string, rows []reviewRow) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	w := csv.NewWriter(f)
+	defer w.Flush()
+	if err := w.Write([]string{"slug", "name", "club", "jersey", "position", "source"}); err != nil {
+		return err
+	}
+	for _, r := range rows {
+		if err := w.Write([]string{r.Slug, r.Name, r.Club, strconv.Itoa(r.Jersey), r.Position, r.Source}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ImportPositions menerapkan koreksi posisi manual dari CSV hasil edit
+// position_review.csv. Format: slug,name,club,jersey,position,source.
+// Hanya kolom position yang dibaca; harga dihitung ulang ikut tier klub.
+// Idempoten (aman di-run ulang) — jadi setelah re-scrape, import lagi file ini.
+func (s *Scraper) ImportPositions(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	recs, err := csv.NewReader(f).ReadAll()
+	if err != nil {
+		return err
+	}
+	if len(recs) < 2 {
+		return fmt.Errorf("CSV kosong: %s", path)
+	}
+
+	updated, skipped := 0, 0
+	for i, rec := range recs[1:] {
+		if len(rec) < 5 {
+			skipped++
+			continue
+		}
+		slug := strings.TrimSpace(rec[0])
+		pos := strings.ToUpper(strings.TrimSpace(rec[4]))
+		if slug == "" {
+			skipped++
+			continue
+		}
+		if pos != "GK" && pos != "DEF" && pos != "MID" && pos != "FWD" {
+			log.Printf("  baris %d (%s): posisi %q tidak valid, skip", i+2, slug, rec[4])
+			skipped++
+			continue
+		}
+
+		var id string
+		var tier int
+		var isNational bool
+		err := s.db.QueryRow(`
+			SELECT p.id, c.tier, p.is_national_team FROM players p
+			JOIN clubs c ON c.id = p.club_id WHERE p.slug = $1
+		`, slug).Scan(&id, &tier, &isNational)
+		if err != nil {
+			log.Printf("  baris %d (%s): pemain tidak ketemu, skip", i+2, slug)
+			skipped++
+			continue
+		}
+		price := scoring.GetPriceByPositionAndTier(pos, tier, isNational)
+		if _, err := s.db.Exec(
+			`UPDATE players SET position = $1, price = $2, updated_at = NOW() WHERE id = $3`,
+			pos, price, id,
+		); err != nil {
+			log.Printf("  baris %d (%s): gagal update: %v", i+2, slug, err)
+			skipped++
+			continue
+		}
+		updated++
+	}
+
+	log.Printf("✅ Import selesai: %d update, %d skip", updated, skipped)
+	return nil
+}
+
+func (s *Scraper) scrapeClubPlayers(clubID, clubName, clubSlug string, clubTier int, review *[]reviewRow) {
 	c := newCollector()
-	inserted, skipped := 0, 0
+	inserted := 0
+	bySource := map[string]int{}
 
 	// Struktur aktual ileague.id (tab #squad):
 	// - a[href*=singleplayer] -> slug + ?token=...
 	// - img[alt=foto-pemain] -> foto (ofisial pakai foto-ofisial & tanpa link -> ke-skip)
 	// - td[colspan=2] -> nama, .number-player -> nomor punggung
 	// - baris tabel "Negara" -> kewarganegaraan
-	// Situs belum menampilkan posisi pemain, jadi dipakai inferensi nomor
-	// punggung (konvensi umum, ala klasifikasi FPL: winger = MID).
-	// Bila situs suatu saat menampilkan posisi, RawPosition dipakai dulu.
-	// Nomor yang tidak konklusif di-skip (tidak ditebak).
+	// Urutan penentuan posisi (SEMUA pemain dimasukkan):
+	//  1. posisi asli situs (bila suatu saat ditampilkan),
+	//  2. daftar pemain yang dikenal pasti (knownPositions),
+	//  3. inferensi nomor punggung (konvensi umum, winger = MID),
+	//  4. fallback MID + tercatat di position_review.csv untuk koreksi manual.
 	for _, card := range fetchIleagueCards(c, clubSlug) {
-		position, ok := normalizePositionStrict(card.RawPosition)
-		if !ok {
-			position, ok = inferPositionByNumber(card.Jersey)
-		}
-		if !ok {
-			skipped++
-			continue
-		}
+		position, source := resolvePosition(card)
 		price := scoring.GetPriceByPositionAndTier(position, clubTier, false)
 		s.upsertPlayer(models.Player{
 			ID:             uuid.New().String(),
@@ -190,19 +288,112 @@ func (s *Scraper) scrapeClubPlayers(clubID, clubSlug string, clubTier int) {
 			IsActive:       true,
 		})
 		inserted++
+		bySource[source]++
+		*review = append(*review, reviewRow{
+			Slug: card.Slug, Name: card.Name, Club: clubName,
+			Jersey: card.Jersey, Position: position, Source: source,
+		})
 	}
-	log.Printf("  %s: %d pemain masuk, %d skip (tanpa posisi)", clubSlug, inserted, skipped)
+	log.Printf("  %s: %d masuk (ileague:%d known:%d nomor:%d fallback:%d)",
+		clubSlug, inserted, bySource["ileague"], bySource["known"], bySource["number"], bySource["fallback"])
+}
+
+// resolvePosition menentukan posisi + sumbernya untuk satu kartu pemain.
+func resolvePosition(card ileagueCard) (position, source string) {
+	if pos, ok := normalizePositionStrict(card.RawPosition); ok {
+		return pos, "ileague"
+	}
+	if pos, ok := matchKnownPlayer(card.Name, card.Slug); ok {
+		return pos, "known"
+	}
+	if pos, ok := inferPositionByNumber(card.Jersey); ok {
+		return pos, "number"
+	}
+	return "MID", "fallback"
+}
+
+// knownPositions berisi pemain yang posisinya dipastikan dari pengetahuan
+// umum (timnas & pemain asing top). Kunci = nama lengkap ternormalisasi.
+// Hanya yang high-confidence; sisanya lewat nomor punggung / koreksi CSV.
+var knownPositions = map[string]string{
+	// --- Kiper ---
+	"nadeo arga winata":   "GK",
+	"muchamad aqil savik": "GK",
+	// --- Bek ---
+	"rizky ridho ramadhani": "DEF",
+	"jordi amat":            "DEF",
+	"shayne pattynama":      "DEF",
+	"pratama arhan":         "DEF",
+	"ilham rio fahmi":       "DEF",
+	"radovan pankov":        "DEF",
+	"nathan tjoe a on":      "DEF",
+	"bagas adi nugroho":     "DEF",
+	"rio fahmi":             "DEF",
+	// --- Gelandang ---
+	"witan sulaiman":  "MID",
+	"kwon chang hoon": "MID",
+	"kwon changhoon":  "MID",
+	// --- Penyerang ---
+	"alexander jeremejeff": "FWD",
+	"ramadhan sananta":     "FWD",
+}
+
+// normTokens menormalisasi nama menjadi token-token huruf kecil.
+func normTokens(s string) []string {
+	s = strings.ToLower(s)
+	for _, r := range []string{".", "-", "_", "'", "’", "/"} {
+		s = strings.ReplaceAll(s, r, " ")
+	}
+	return strings.Fields(s)
+}
+
+// matchKnownPlayer mencocokkan kartu (nama + slug ileague) dengan knownPositions.
+// Butuh >=2 token bermakna yang sama — token tunggal seperti "NATHAN" saja
+// tidak cukup (bisa orang berbeda, mis. Nathan Kusuma vs Nathan Tjoe-A-On).
+func matchKnownPlayer(cardName, cardSlug string) (string, bool) {
+	combined := append(normTokens(cardName), normTokens(cardSlug)...)
+	if len(combined) == 0 {
+		return "", false
+	}
+	bestPos, bestShared := "", 0
+	for known, pos := range knownPositions {
+		if shared := sharedTokens(combined, normTokens(known)); shared > bestShared {
+			bestPos, bestShared = pos, shared
+		}
+	}
+	if bestShared >= 2 {
+		return bestPos, true
+	}
+	return "", false
+}
+
+func sharedTokens(a, b []string) int {
+	seen := map[string]bool{}
+	shared := 0
+	for _, x := range a {
+		if seen[x] {
+			continue // nama & slug sering memuat token yang sama
+		}
+		seen[x] = true
+		for _, y := range b {
+			if (x == y && len(x) >= 3) || (len(x) == 1 && strings.HasPrefix(y, x)) {
+				shared++
+				break
+			}
+		}
+	}
+	return shared
 }
 
 // ileagueCard adalah satu kartu pemain di tab #squad halaman klub.
 type ileagueCard struct {
-	Name         string
-	Slug         string
-	Token        string
-	PhotoURL     string
-	Nationality  string
-	Jersey       int
-	RawPosition  string // kosong di markup saat ini; siap bila situs menampilkannya
+	Name        string
+	Slug        string
+	Token       string
+	PhotoURL    string
+	Nationality string
+	Jersey      int
+	RawPosition string // kosong di markup saat ini; siap bila situs menampilkannya
 }
 
 // fetchIleagueCards mengambil semua kartu pemain (#squad .item-player) sebuah klub.
@@ -300,7 +491,7 @@ func (s *Scraper) ScrapeMatchStats(gameweekNum int) error {
 
 	// Get match results for this gameweek
 	c := newCollector()
-	
+
 	c.OnHTML(".match-result, .fixture-result", func(e *colly.HTMLElement) {
 		matchURL := e.ChildAttr("a", "href")
 		if matchURL != "" {
