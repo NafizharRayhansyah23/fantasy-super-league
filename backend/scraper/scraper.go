@@ -273,6 +273,7 @@ func (s *Scraper) scrapeClubPlayers(clubID, clubName, clubSlug string, clubTier 
 	//  4. fallback MID + tercatat di position_review.csv untuk koreksi manual.
 	for _, card := range fetchIleagueCards(c, clubSlug) {
 		position, source := resolvePosition(card)
+		s.logIfTransferred(card.Slug, card.Name, clubSlug)
 		price := scoring.GetPriceByPositionAndTier(position, clubTier, false)
 		s.upsertPlayer(models.Player{
 			ID:             uuid.New().String(),
@@ -746,6 +747,22 @@ func (s *Scraper) upsertClub(club models.Club) {
 			city = EXCLUDED.city,
 			tier = EXCLUDED.tier
 	`, club.ID, club.Name, club.ShortName, club.Slug, club.LogoURL, club.Stadium, club.City, club.Tier)
+}
+
+// logIfTransferred mencatat bila pemain sudah terdaftar di klub lain
+// (kasus transfer antar-musim, mis. Saddil Ramdani Persebaya -> Persib).
+// Baris DB tetap di-overwrite oleh klub yang diproses terakhir.
+func (s *Scraper) logIfTransferred(playerSlug, playerName, newClubSlug string) {
+	var oldClubSlug string
+	err := s.db.QueryRow(`
+		SELECT c.slug FROM players p
+		JOIN clubs c ON c.id = p.club_id
+		WHERE p.slug = $1
+	`, playerSlug).Scan(&oldClubSlug)
+	if err != nil || oldClubSlug == "" || oldClubSlug == newClubSlug {
+		return
+	}
+	log.Printf("  🔁 indikasi transfer: %s (%s) %s -> %s", playerName, playerSlug, oldClubSlug, newClubSlug)
 }
 
 func (s *Scraper) upsertPlayer(player models.Player) {
