@@ -60,7 +60,8 @@ func (h *Handler) GetPlayers(c *gin.Context) {
 		argIdx++
 	}
 	if filter.Search != "" {
-		query += fmt.Sprintf(" AND LOWER(p.name) LIKE LOWER($%d)", argIdx)
+		// unaccent agar "balsa" tetap ketemu "Balša Sekulić"
+		query += fmt.Sprintf(" AND unaccent(LOWER(p.name)) LIKE unaccent(LOWER($%d))", argIdx)
 		args = append(args, "%"+filter.Search+"%")
 		argIdx++
 	}
