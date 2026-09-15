@@ -221,6 +221,34 @@ h1, h2, h3, h4, h5, h6 {
   gap: 0.75rem;
 }
 
+.mobile-menu-toggle {
+  display: none;
+}
+
+.navbar-mobile-menu {
+  display: none;
+  position: absolute;
+  top: 72px;
+  left: 0;
+  right: 0;
+  background: rgba(8, 11, 20, 0.98);
+  border-bottom: 1px solid var(--bg-border);
+  padding: 0.75rem 1rem 1rem;
+  z-index: 99;
+}
+
+.navbar-mobile-menu ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.navbar-mobile-menu .navbar-link {
+  width: 100%;
+  padding: 0.75rem 0.875rem;
+}
+
 /* =============================================
    BUTTONS
    ============================================= */
@@ -828,6 +856,8 @@ h1, h2, h3, h4, h5, h6 {
 
 @media (max-width: 768px) {
   .navbar-nav { display: none; }
+  .mobile-menu-toggle { display: inline-flex; }
+  .navbar-mobile-menu { display: block; }
   
   .pitch-player-avatar {
     width: 44px;

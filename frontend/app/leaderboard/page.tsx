@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { leaderboardApi, LeaderboardEntry } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { Trophy, Search } from "lucide-react";
@@ -8,34 +8,35 @@ import { Trophy, Search } from "lucide-react";
 export default function LeaderboardPage() {
   const { user } = useAuth();
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
-  const [filtered, setFiltered] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
     leaderboardApi
       .get()
       .then((res) => {
-        setEntries(res.data || []);
-        setFiltered(res.data || []);
+        if (!cancelled) setEntries(res.data || []);
       })
-      .catch(() => setEntries([]))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!cancelled) setEntries([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  useEffect(() => {
-    if (!search) {
-      setFiltered(entries);
-    } else {
-      const q = search.toLowerCase();
-      setFiltered(
-        entries.filter(
-          (e) =>
-            e.team_name.toLowerCase().includes(q) ||
-            e.username.toLowerCase().includes(q)
-        )
-      );
-    }
+  const filtered = useMemo(() => {
+    if (!search) return entries;
+    const q = search.toLowerCase();
+    return entries.filter(
+      (e) =>
+        e.team_name.toLowerCase().includes(q) ||
+        e.username.toLowerCase().includes(q)
+    );
   }, [search, entries]);
 
   const myEntry = entries.find((e) => e.user_id === user?.id);
