@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/fantasysuperleague/backend/internal/models"
 	"github.com/fantasysuperleague/backend/internal/scoring"
@@ -518,6 +519,7 @@ func fetchIleagueCards(c *colly.Collector, clubSlug string) []ileagueCard {
 		if slug == "" {
 			return
 		}
+		name = displayName(name, slug)
 		jersey, _ := strconv.Atoi(strings.TrimSpace(e.ChildText(".number-player")))
 		nationality := ""
 		e.ForEach("table tr", func(_ int, row *colly.HTMLElement) {
@@ -543,6 +545,41 @@ func fetchIleagueCards(c *colly.Collector, clubSlug string) []ileagueCard {
 		return nil
 	}
 	return cards
+}
+
+// displayName menentukan nama tampil pemain. Situs sering menyingkat
+// ("T.Paku Alam", "R. RIDHO") tapi slug URL selalu nama lengkap
+// ("teja_paku_alam"). Bila kartu disingkat (ada titik) atau slug lebih
+// lengkap, pakai versi slug; jika tidak, kapitalisasi nama kartu.
+func displayName(cardName, slug string) string {
+	if strings.Contains(cardName, ".") {
+		if full := nameFromSlug(slug); full != "" {
+			return full
+		}
+	}
+	if len(normTokens(slug)) > len(normTokens(cardName)) {
+		return nameFromSlug(slug)
+	}
+	return titleWords(cardName)
+}
+
+// nameFromSlug mengubah "teja_paku_alam" menjadi "Teja Paku Alam".
+func nameFromSlug(slug string) string {
+	s := slug
+	for _, r := range []string{"_", ".", "-", ","} {
+		s = strings.ReplaceAll(s, r, " ")
+	}
+	return titleWords(strings.Join(strings.Fields(s), " "))
+}
+
+func titleWords(s string) string {
+	words := strings.Fields(strings.ToLower(s))
+	for i, w := range words {
+		r := []rune(w)
+		r[0] = unicode.ToUpper(r[0])
+		words[i] = string(r)
+	}
+	return strings.Join(words, " ")
 }
 
 // inferPositionByNumber menebak posisi dari nomor punggung.
