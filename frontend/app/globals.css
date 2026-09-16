@@ -1080,3 +1080,85 @@ h1, h2, h3, h4, h5, h6 {
     linear-gradient(rgba(0, 82, 156, 0.06) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0, 82, 156, 0.06) 1px, transparent 1px);
 }
+
+.landing-light .hero {
+  min-height: auto;
+}
+
+.landing-light .heading-hero {
+  background: linear-gradient(135deg, #0B2447 0%, #00529C 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+@media (max-width: 900px) {
+  .landing-light .hero-grid-2col {
+    grid-template-columns: 1fr !important;
+    gap: 2rem !important;
+  }
+}
+
+/* Strip klub horizontal (landing) */
+.club-strip {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+  scrollbar-width: thin;
+}
+
+.club-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 1.25rem 0.625rem 0.625rem;
+  background: var(--bg-card);
+  border: 1px solid var(--bg-border);
+  border-radius: 999px;
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+
+.club-chip:hover {
+  border-color: #B9D4F2;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(11, 36, 71, 0.08);
+}
+
+.club-chip-logo {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.club-chip-initials {
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: var(--text-secondary);
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+.club-chip-logo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+}
+
+.club-chip-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
