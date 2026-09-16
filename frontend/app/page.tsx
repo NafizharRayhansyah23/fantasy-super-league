@@ -3,8 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { gameweeksApi, leaderboardApi, Gameweek, LeaderboardEntry } from "@/lib/api";
-import { ArrowRight, Trophy, Users, Star, Zap, Shield, Target } from "lucide-react";
+import {
+  gameweeksApi, leaderboardApi, playersApi, clubsApi,
+  Gameweek, LeaderboardEntry, Player, Club, formatPrice,
+} from "@/lib/api";
+import { ArrowRight, Trophy, Users, Star, Zap, Shield, Target, Crown, ChevronRight } from "lucide-react";
+import PlayerAvatar from "@/components/PlayerAvatar";
 
 const FEATURES = [
   {
@@ -45,7 +49,9 @@ const SCORING = [
 export default function HomePage() {
   const { isLoggedIn } = useAuth();
   const [activeGw, setActiveGw] = useState<Gameweek | null>(null);
-  const [topPlayers, setTopPlayers] = useState<LeaderboardEntry[]>([]);
+  const [topManagers, setTopManagers] = useState<LeaderboardEntry[]>([]);
+  const [topScorers, setTopScorers] = useState<Player[]>([]);
+  const [clubs, setClubs] = useState<Club[]>([]);
 
   useEffect(() => {
     gameweeksApi.getAll().then((res) => {
@@ -54,9 +60,19 @@ export default function HomePage() {
     }).catch(() => {});
 
     leaderboardApi.get().then((res) => {
-      setTopPlayers(res.data?.slice(0, 5) || []);
+      setTopManagers(res.data?.slice(0, 5) || []);
+    }).catch(() => {});
+
+    playersApi.getAll({ limit: 5 }).then((res) => {
+      setTopScorers(res.data || []);
+    }).catch(() => {});
+
+    clubsApi.getAll().then((res) => {
+      setClubs(res.data || []);
     }).catch(() => {});
   }, []);
+
+  const featured = topScorers[0] || null;
 
   return (
     <div className="landing-light">
@@ -65,7 +81,18 @@ export default function HomePage() {
         <div className="hero-bg" />
         <div className="hero-grid" />
         <div className="container-app" style={{ width: "100%", zIndex: 1 }}>
-          <div style={{ maxWidth: 720, paddingTop: "4rem", paddingBottom: "4rem" }}>
+          <div
+            className="hero-grid-2col"
+            style={{
+              paddingTop: "3rem",
+              paddingBottom: "2.5rem",
+              display: "grid",
+              gridTemplateColumns: "1.2fr 0.8fr",
+              gap: "3rem",
+              alignItems: "center",
+            }}
+          >
+          <div style={{ maxWidth: 560 }}>
             {/* Active gameweek badge */}
             {activeGw && (
               <div
@@ -159,7 +186,7 @@ export default function HomePage() {
               }}
             >
               {[
-                { label: "Klub Liga 1", value: "16" },
+                { label: "Klub Liga 1", value: String(clubs.length || 18) },
                 { label: "Budget Fantasy", value: "Rp 100jt" },
                 { label: "Pemain / Tim", value: "15" },
                 { label: "Transfer/Pekan", value: "1 Gratis" },
@@ -182,6 +209,152 @@ export default function HomePage() {
               ))}
             </div>
           </div>
+
+          {/* Featured player card (ala hero referensi) */}
+          <div className="animate-fadeInUp" style={{ animationDelay: "0.25s" }}>
+            <div className="card featured-card" style={{ overflow: "hidden", padding: 0 }}>
+              <div
+                style={{
+                  background: "linear-gradient(135deg, #00529C 0%, #003E7A 60%, #0B2447 100%)",
+                  padding: "1.25rem 1.25rem 0",
+                  color: "#fff",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+                  <Crown size={16} color="#F59E0B" />
+                  <span style={{ fontSize: "0.8125rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.9 }}>
+                    Pemain Unggulan
+                  </span>
+                </div>
+                {featured ? (
+                  <div style={{ display: "flex", gap: "1rem", alignItems: "flex-end" }}>
+                    <div style={{ width: 120, height: 140, borderRadius: "12px 12px 0 0", overflow: "hidden", flexShrink: 0, background: "rgba(255,255,255,0.15)" }}>
+                      <PlayerAvatar key={featured.id} src={featured.photo_url} alt={featured.name} />
+                    </div>
+                    <div style={{ paddingBottom: "1.25rem", minWidth: 0 }}>
+                      <div style={{ fontSize: "1.25rem", fontWeight: 800, lineHeight: 1.2, marginBottom: "0.25rem" }}>
+                        {featured.name}
+                      </div>
+                      <div style={{ fontSize: "0.8125rem", opacity: 0.85, marginBottom: "0.75rem" }}>
+                        {featured.club?.name || "—"} · {featured.position}
+                      </div>
+                      <div style={{ display: "inline-flex", alignItems: "baseline", gap: "0.375rem", background: "rgba(255,255,255,0.15)", borderRadius: 10, padding: "0.375rem 0.75rem" }}>
+                        <span style={{ fontSize: "1.5rem", fontWeight: 900 }}>{formatPrice(featured.price)}</span>
+                        <span style={{ fontSize: "0.75rem", opacity: 0.85 }}>{featured.total_points} pts</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ padding: "2rem 0", textAlign: "center", opacity: 0.8, fontSize: "0.9rem" }}>
+                    Belum ada data pemain
+                  </div>
+                )}
+              </div>
+              <Link
+                href="/players"
+                className="btn btn-secondary btn-sm"
+                style={{ margin: "1rem 1.25rem 1.25rem", justifyContent: "center" }}
+              >
+                Lihat Semua Pemain <ChevronRight size={14} />
+              </Link>
+            </div>
+          </div>
+
+          </div>
+        </div>
+      </section>
+
+      {/* ─── CLUB STRIP ─── */}
+      <section style={{ padding: "2.5rem 0", background: "var(--bg-surface)", borderTop: "1px solid var(--bg-border)", borderBottom: "1px solid var(--bg-border)" }}>
+        <div className="container-app">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem" }}>
+            <h2 className="heading-md">Klub BRI Super League</h2>
+            <Link href="/players" className="btn btn-ghost btn-sm">
+              Semua Pemain <ChevronRight size={14} />
+            </Link>
+          </div>
+          <div className="club-strip">
+            {clubs.map((club) => (
+              <Link key={club.id} href="/players" className="club-chip" title={club.name}>
+                <span className="club-chip-logo">
+                  <span className="club-chip-initials">
+                    {(club.short_name || club.name).slice(0, 3).toUpperCase()}
+                  </span>
+                  {club.logo_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={club.logo_url}
+                      alt={club.name}
+                      loading="lazy"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  ) : null}
+                </span>
+                <span className="club-chip-name">{club.name}</span>
+              </Link>
+            ))}
+            {clubs.length === 0 && (
+              <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Memuat klub…</p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── TOP PEMAIN ─── */}
+      <section style={{ padding: "5rem 0" }}>
+        <div className="container-app">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+            <h2 className="heading-lg">Top Pemain</h2>
+            <Link href="/players" className="btn btn-ghost btn-sm">
+              Semua <ChevronRight size={14} />
+            </Link>
+          </div>
+          <p style={{ color: "var(--text-secondary)", fontSize: "1.0625rem", marginBottom: "2rem" }}>
+            Peringkat pemain berdasarkan total poin fantasy
+          </p>
+          {topScorers.length === 0 ? (
+            <div className="card" style={{ textAlign: "center", color: "var(--text-muted)", padding: "3rem" }}>
+              Belum ada data pemain
+            </div>
+          ) : (
+            <div
+              className="stagger"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: "1.25rem",
+              }}
+            >
+              {topScorers.map((p, i) => (
+                <div key={p.id} className="card card-hover" style={{ padding: 0, overflow: "hidden" }}>
+                  <div style={{ position: "relative" }}>
+                    <PlayerAvatar key={p.id} src={p.photo_url} alt={p.name} className="player-card-photo" />
+                    <div className={`rank-badge ${i < 3 ? `rank-${i + 1}` : "rank-other"}`} style={{ position: "absolute", top: 8, left: 8 }}>
+                      {i + 1}
+                    </div>
+                  </div>
+                  <div style={{ padding: "0.875rem 1rem 1rem" }}>
+                    <div style={{ fontWeight: 700, fontSize: "0.9375rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {p.name}
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginBottom: "0.75rem" }}>
+                      {p.club?.short_name || p.club?.name || "—"} · {p.position}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontWeight: 800, fontSize: "1.125rem", color: "var(--fsl-green)" }}>
+                        {p.total_points} <span style={{ fontSize: "0.75rem", fontWeight: 400, color: "var(--text-muted)" }}>pts</span>
+                      </span>
+                      <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--text-secondary)" }}>
+                        {formatPrice(p.price)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -321,14 +494,14 @@ export default function HomePage() {
                 </Link>
               </div>
 
-              {topPlayers.length === 0 ? (
+              {topManagers.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
                   <Star size={32} style={{ marginBottom: "0.75rem", opacity: 0.4 }} />
                   <p>Belum ada data leaderboard</p>
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
-                  {topPlayers.map((entry) => (
+                  {topManagers.map((entry) => (
                     <div key={entry.user_id} className={`leaderboard-row top-${entry.rank}`}>
                       <div className={`rank-badge rank-${entry.rank <= 3 ? entry.rank : "other"}`}>
                         {entry.rank}
