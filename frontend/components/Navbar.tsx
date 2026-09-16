@@ -99,12 +99,12 @@ export default function Navbar() {
                     position: "absolute",
                     top: "calc(100% + 8px)",
                     right: 0,
-                    background: "var(--bg-card)",
-                    border: "1px solid var(--bg-border)",
+                    background: "#FFFFFF",
+                    border: "1px solid #D5E5F7",
                     borderRadius: 12,
                     padding: "0.5rem",
                     minWidth: 180,
-                    boxShadow: "0 16px 48px rgba(0,0,0,0.5)",
+                    boxShadow: "0 16px 48px rgba(11,36,71,0.12)",
                     zIndex: 50,
                     animation: "scaleIn 0.15s ease",
                   }}
@@ -112,14 +112,14 @@ export default function Navbar() {
                   <div
                     style={{
                       padding: "0.5rem 0.75rem",
-                      borderBottom: "1px solid var(--bg-border)",
+                      borderBottom: "1px solid #D5E5F7",
                       marginBottom: "0.25rem",
                     }}
                   >
-                    <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: 2 }}>
+                    <p style={{ fontSize: "0.75rem", color: "#7E96B3", marginBottom: 2 }}>
                       Tim kamu
                     </p>
-                    <p style={{ fontSize: "0.875rem", fontWeight: 600 }}>
+                    <p style={{ fontSize: "0.875rem", fontWeight: 600, color: "#0B2447" }}>
                       {user?.team_name || "Belum ada tim"}
                     </p>
                   </div>
