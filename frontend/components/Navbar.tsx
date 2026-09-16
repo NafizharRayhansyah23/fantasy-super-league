@@ -39,7 +39,18 @@ export default function Navbar() {
       <div className="container-app navbar-inner">
         {/* Logo */}
         <Link href="/" className="navbar-logo">
-          <div className="navbar-logo-icon">⚽</div>
+          <div className="navbar-logo-icon" style={{ background: "#0B2447", overflow: "hidden", position: "relative" }}>
+            <span style={{ fontSize: "1.25rem" }}>⚽</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/bri-super-league.png"
+              alt="BRI Super League"
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
+            />
+          </div>
           <span className="navbar-logo-text">
             Fantasy <span>Super League</span>
           </span>
