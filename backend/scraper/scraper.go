@@ -1,6 +1,7 @@
 package scraper
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/csv"
 	"fmt"
@@ -196,13 +197,15 @@ func writeReviewCSV(path string, rows []reviewRow) error {
 // Hanya kolom position yang dibaca; harga dihitung ulang ikut tier klub.
 // Idempoten (aman di-run ulang) — jadi setelah re-scrape, import lagi file ini.
 func (s *Scraper) ImportPositions(path string) error {
-	f, err := os.Open(path)
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	// Toleransi BOM (Excel/PowerShell menulis UTF-8 dengan BOM) — harus
+	// dibuang SEBELUM parsing karena merusak deteksi field ber-quote.
+	raw = bytes.TrimPrefix(raw, []byte("\xef\xbb\xbf"))
 
-	recs, err := csv.NewReader(f).ReadAll()
+	recs, err := csv.NewReader(bytes.NewReader(raw)).ReadAll()
 	if err != nil {
 		return err
 	}
