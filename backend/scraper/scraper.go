@@ -271,8 +271,17 @@ func (s *Scraper) scrapeClubPlayers(clubID, clubName, clubSlug string, clubTier 
 	//  2. daftar pemain yang dikenal pasti (knownPositions),
 	//  3. inferensi nomor punggung (konvensi umum, winger = MID),
 	//  4. fallback MID + tercatat di position_review.csv untuk koreksi manual.
+	wikiSquad := fetchWikiSquad(clubSlug)
+	if len(wikiSquad) > 0 {
+		log.Printf("  %s: skuad wiki %d pemain", clubSlug, len(wikiSquad))
+	} else if _, mapped := wikiTitles[clubSlug]; mapped {
+		// Wiki adalah sumber utama klub ini; bila fetch gagal, skip klub
+		// agar data bagus dari run sebelumnya tidak ketimpa heuristik.
+		log.Printf("  %s: wiki gagal, skip klub ini", clubSlug)
+		return
+	}
 	for _, card := range fetchIleagueCards(c, clubSlug) {
-		position, source := resolvePosition(card)
+		position, source := resolvePosition(card, wikiSquad)
 		s.logIfTransferred(card.Slug, card.Name, clubSlug)
 		price := scoring.GetPriceByPositionAndTier(position, clubTier, false)
 		s.upsertPlayer(models.Player{
@@ -296,14 +305,19 @@ func (s *Scraper) scrapeClubPlayers(clubID, clubName, clubSlug string, clubTier 
 			Jersey: card.Jersey, Position: position, Source: source,
 		})
 	}
-	log.Printf("  %s: %d masuk (ileague:%d known:%d nomor:%d fallback:%d)",
-		clubSlug, inserted, bySource["ileague"], bySource["known"], bySource["number"], bySource["fallback"])
+	log.Printf("  %s: %d masuk (ileague:%d wiki:%d known:%d nomor:%d fallback:%d)",
+		clubSlug, inserted, bySource["ileague"], bySource["wiki"], bySource["known"], bySource["number"], bySource["fallback"])
 }
 
 // resolvePosition menentukan posisi + sumbernya untuk satu kartu pemain.
-func resolvePosition(card ileagueCard) (position, source string) {
+// Urutan: posisi asli situs -> skuad Wikipedia -> daftar dikenal ->
+// nomor punggung -> fallback MID (dicatat untuk koreksi manual).
+func resolvePosition(card ileagueCard, wikiSquad map[string]string) (position, source string) {
 	if pos, ok := normalizePositionStrict(card.RawPosition); ok {
 		return pos, "ileague"
+	}
+	if pos, ok := matchWikiPlayer(card.Name, card.Slug, wikiSquad); ok {
+		return pos, "wiki"
 	}
 	if pos, ok := matchKnownPlayer(card.Name, card.Slug); ok {
 		return pos, "known"
@@ -434,13 +448,38 @@ var knownPositions = map[string]string{
 }
 
 // normTokens menormalisasi nama menjadi token-token huruf kecil.
+// Aksen Latin dilucuti agar "Balša Sekulić" cocok dengan slug "balsa_sekulic".
 func normTokens(s string) []string {
 	s = strings.ToLower(s)
+	s = accentReplacer.Replace(s)
 	for _, r := range []string{".", "-", "_", "'", "’", "/"} {
 		s = strings.ReplaceAll(s, r, " ")
 	}
 	return strings.Fields(s)
 }
+
+var accentReplacer = strings.NewReplacer(
+	"à", "a", "á", "a", "â", "a", "ã", "a", "ä", "a", "å", "a", "ā", "a", "ă", "a", "ą", "a", "ǎ", "a", "ȁ", "a", "ȃ", "a", "ạ", "a", "ả", "a", "ấ", "a", "ầ", "a", "ẩ", "a", "ẫ", "a", "ậ", "a", "ắ", "a", "ằ", "a", "ẳ", "a", "ẵ", "a", "ặ", "a",
+	"ç", "c", "ć", "c", "ĉ", "c", "ċ", "c", "č", "c",
+	"ď", "d", "đ", "d", "ð", "d",
+	"è", "e", "é", "e", "ê", "e", "ë", "e", "ē", "e", "ĕ", "e", "ė", "e", "ę", "e", "ě", "e", "ẹ", "e", "ẻ", "e", "ẽ", "e", "ế", "e", "ề", "e", "ể", "e", "ễ", "e", "ệ", "e",
+	"ĝ", "g", "ğ", "g", "ġ", "g", "ģ", "g",
+	"ĥ", "h", "ħ", "h",
+	"ì", "i", "í", "i", "î", "i", "ï", "i", "ĩ", "i", "ī", "i", "ĭ", "i", "į", "i", "ı", "i", "ǐ", "i", "ỉ", "i", "ị", "i",
+	"ĵ", "j",
+	"ķ", "k", "ĸ", "k",
+	"ĺ", "l", "ļ", "l", "ľ", "l", "ŀ", "l", "ł", "l",
+	"ñ", "n", "ń", "n", "ņ", "n", "ň", "n", "ŉ", "n",
+	"ò", "o", "ó", "o", "ô", "o", "õ", "o", "ö", "o", "ø", "o", "ō", "o", "ŏ", "o", "ő", "o", "ǒ", "o", "ọ", "o", "ỏ", "o", "ố", "o", "ồ", "o", "ổ", "o", "ỗ", "o", "ộ", "o", "ớ", "o", "ờ", "o", "ở", "o", "ỡ", "o", "ợ", "o", "ơ", "o",
+	"ŕ", "r", "ŗ", "r", "ř", "r",
+	"ś", "s", "ŝ", "s", "ş", "s", "š", "s", "ș", "s", "ṣ", "s", "ß", "ss",
+	"ţ", "t", "ť", "t", "ŧ", "t", "ț", "t",
+	"ù", "u", "ú", "u", "û", "u", "ü", "u", "ũ", "u", "ū", "u", "ŭ", "u", "ů", "u", "ű", "u", "ų", "u", "ǔ", "u", "ụ", "u", "ủ", "u", "ứ", "u", "ừ", "u", "ử", "u", "ữ", "u", "ự", "u",
+	"ŵ", "w",
+	"ý", "y", "ÿ", "y", "ŷ", "y", "ỳ", "y", "ỵ", "y", "ỷ", "y", "ỹ", "y",
+	"ź", "z", "ż", "z", "ž", "z", "ẓ", "z",
+	"æ", "ae", "œ", "oe",
+)
 
 // matchKnownPlayer mencocokkan kartu (nama + slug ileague) dengan knownPositions.
 // Butuh >=2 token SAMA PERSIS (min 3 huruf) — tanpa tebak inisial, tanpa
@@ -468,7 +507,7 @@ func matchKnownPlayer(cardName, cardSlug string) (string, bool) {
 // (gelar, patronimik Bali, partikel Portugis) — diabaikan saat mencocokkan.
 var stopTokens = map[string]bool{
 	"muhammad": true, "mohammad": true, "moh": true,
-	"putra": true, "putri": true,
+	"putra": true, "putri": true, "agung": true,
 	"dos": true, "das": true, "del": true,
 }
 
@@ -592,10 +631,10 @@ func inferPositionByNumber(jersey int) (string, bool) {
 		return "GK", true // hampir selalu kiper utama
 	case 2, 3, 4, 5:
 		return "DEF", true // nomor bek klasik (RB/LB/CB)
-	case 7, 8, 10, 11:
-		return "MID", true // winger & playmaker
-	case 9:
-		return "FWD", true // striker klasik
+	case 8, 10:
+		return "MID", true // playmaker & gelandang tengah
+	case 7, 9, 11:
+		return "FWD", true // nomor penyerang/winger (konvensi Wikipedia: FW)
 	}
 	return "", false
 }
