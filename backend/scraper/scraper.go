@@ -661,75 +661,6 @@ func parsePlayerLink(href string) (slug, token string) {
 }
 
 // ScrapeMatchStats scrapes match stats for a specific gameweek
-func (s *Scraper) ScrapeMatchStats(gameweekNum int) error {
-	log.Printf("📊 Scraping stats for gameweek %d...", gameweekNum)
-
-	// Ensure gameweek exists
-	var gwID string
-	err := s.db.QueryRow("SELECT id FROM gameweeks WHERE number = $1", gameweekNum).Scan(&gwID)
-	if err == sql.ErrNoRows {
-		gwID = uuid.New().String()
-		s.db.Exec(
-			`INSERT INTO gameweeks (id, number, name, is_finished) VALUES ($1, $2, $3, TRUE)`,
-			gwID, gameweekNum, fmt.Sprintf("Gameweek %d", gameweekNum),
-		)
-	}
-
-	// Get match results for this gameweek
-	c := newCollector()
-
-	c.OnHTML(".match-result, .fixture-result", func(e *colly.HTMLElement) {
-		matchURL := e.ChildAttr("a", "href")
-		if matchURL != "" {
-			// Visit each match detail page to get player stats
-			s.scrapeMatchDetail(gwID, ensureAbsURL(matchURL))
-			time.Sleep(300 * time.Millisecond)
-		}
-	})
-
-	url := fmt.Sprintf("%s/fixtures/index/%s/%d/1", baseURL, leagueSlug, gameweekNum)
-	c.Visit(url)
-
-	// After scraping, calculate fantasy points
-	s.calculateGameweekPoints(gwID)
-
-	log.Printf("✅ Gameweek %d stats scraped!", gameweekNum)
-	return nil
-}
-
-func (s *Scraper) scrapeMatchDetail(gwID, matchURL string) {
-	c := newCollector()
-
-	c.OnHTML(".player-stat-row, .lineup-player", func(e *colly.HTMLElement) {
-		playerSlug := e.Attr("data-player")
-		if playerSlug == "" {
-			return
-		}
-
-		var playerID string
-		s.db.QueryRow("SELECT id FROM players WHERE slug = $1", playerSlug).Scan(&playerID)
-		if playerID == "" {
-			return
-		}
-
-		stats := models.PlayerStats{
-			ID:            uuid.New().String(),
-			PlayerID:      playerID,
-			GameweekID:    gwID,
-			MinutesPlayed: parseInt(e.ChildText(".minutes")),
-			Goals:         parseInt(e.ChildText(".goals")),
-			Assists:       parseInt(e.ChildText(".assists")),
-			YellowCards:   parseInt(e.ChildText(".yellow-cards")),
-			RedCards:      parseInt(e.ChildText(".red-cards")),
-			Saves:         parseInt(e.ChildText(".saves")),
-		}
-
-		s.upsertPlayerStats(stats)
-	})
-
-	c.Visit(matchURL)
-}
-
 func (s *Scraper) calculateGameweekPoints(gwID string) {
 	rows, err := s.db.Query(`
 		SELECT ps.id, ps.player_id, ps.minutes_played, ps.goals, ps.assists,
@@ -825,17 +756,20 @@ func (s *Scraper) upsertPlayer(player models.Player) {
 
 func (s *Scraper) upsertPlayerStats(stats models.PlayerStats) {
 	s.db.Exec(`
-		INSERT INTO player_stats (id, player_id, gameweek_id, minutes_played, goals, assists, yellow_cards, red_cards, saves)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO player_stats (id, player_id, gameweek_id, minutes_played, goals, assists, clean_sheet, goals_conceded, yellow_cards, red_cards, saves, bonus)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		ON CONFLICT (player_id, gameweek_id) DO UPDATE SET
 			minutes_played = EXCLUDED.minutes_played,
 			goals = EXCLUDED.goals,
 			assists = EXCLUDED.assists,
+			clean_sheet = EXCLUDED.clean_sheet,
+			goals_conceded = EXCLUDED.goals_conceded,
 			yellow_cards = EXCLUDED.yellow_cards,
 			red_cards = EXCLUDED.red_cards,
-			saves = EXCLUDED.saves
+			saves = EXCLUDED.saves,
+			bonus = EXCLUDED.bonus
 	`, stats.ID, stats.PlayerID, stats.GameweekID, stats.MinutesPlayed, stats.Goals,
-		stats.Assists, stats.YellowCards, stats.RedCards, stats.Saves)
+		stats.Assists, stats.CleanSheet, stats.GoalsConceded, stats.YellowCards, stats.RedCards, stats.Saves, stats.Bonus)
 }
 
 // insertDefaultClubs seeds known Liga 1 clubs for offline dev
