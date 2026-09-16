@@ -1003,3 +1003,69 @@ h1, h2, h3, h4, h5, h6 {
 .free-transfer-dot.used {
   background: var(--text-muted);
 }
+
+/* =============================================
+   LANDING LIGHT THEME (putih-biru ala BRI)
+   Ter-scope: hanya berlaku di dalam .landing-light
+   ============================================= */
+
+.landing-light {
+  --fsl-green: #00529C;
+  --fsl-green-dim: #003E7A;
+  --fsl-green-glow: rgba(0, 82, 156, 0.18);
+  --fsl-blue: #00529C;
+
+  --bg-base: #FFFFFF;
+  --bg-surface: #F2F7FD;
+  --bg-card: #FFFFFF;
+  --bg-elevated: #E7F0FA;
+  --bg-hover: #DCEAF9;
+  --bg-border: #D5E5F7;
+
+  --text-primary: #0B2447;
+  --text-secondary: #47617F;
+  --text-muted: #7E96B3;
+
+  --shadow-card: 0 1px 2px rgba(11, 36, 71, 0.05), 0 12px 32px rgba(11, 36, 71, 0.08);
+  --shadow-glow: 0 0 40px rgba(0, 82, 156, 0.12);
+  --shadow-green: 0 8px 24px rgba(0, 82, 156, 0.22);
+
+  background: #FFFFFF;
+  color: var(--text-primary);
+}
+
+.landing-light .btn-primary {
+  color: #FFFFFF;
+}
+
+.landing-light .btn-primary:hover:not(:disabled) {
+  box-shadow: 0 8px 24px rgba(0, 82, 156, 0.35);
+}
+
+.landing-light .btn-secondary:hover:not(:disabled) {
+  border-color: #B9D4F2;
+}
+
+.landing-light .card {
+  box-shadow: 0 1px 2px rgba(11, 36, 71, 0.05), 0 8px 24px rgba(11, 36, 71, 0.06);
+}
+
+.landing-light .card-hover:hover {
+  border-color: #B9D4F2;
+}
+
+.landing-light .card-glow {
+  border-color: rgba(0, 82, 156, 0.25);
+}
+
+.landing-light .hero-bg {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(0, 82, 156, 0.10) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 40% at 80% 50%, rgba(0, 82, 156, 0.06) 0%, transparent 70%);
+}
+
+.landing-light .hero-grid {
+  background-image:
+    linear-gradient(rgba(0, 82, 156, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 82, 156, 0.06) 1px, transparent 1px);
+}

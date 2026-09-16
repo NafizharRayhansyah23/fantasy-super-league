@@ -59,7 +59,7 @@ export default function HomePage() {
   }, []);
 
   return (
-    <div>
+    <div className="landing-light">
       {/* ─── HERO ─── */}
       <section className="hero">
         <div className="hero-bg" />
@@ -75,8 +75,8 @@ export default function HomePage() {
                   alignItems: "center",
                   gap: "0.5rem",
                   padding: "0.35rem 0.875rem",
-                  background: "rgba(0, 208, 132, 0.1)",
-                  border: "1px solid rgba(0, 208, 132, 0.3)",
+                  background: "rgba(0, 82, 156, 0.08)",
+                  border: "1px solid rgba(0, 82, 156, 0.25)",
                   borderRadius: 999,
                   fontSize: "0.8125rem",
                   fontWeight: 600,
@@ -93,7 +93,7 @@ export default function HomePage() {
                     animation: "pulse-green 2s infinite",
                   }}
                 />
-                🔴 LIVE — {activeGw.name}
+                🔵 LIVE — {activeGw.name}
               </div>
             )}
 
@@ -361,7 +361,7 @@ export default function HomePage() {
         <section
           style={{
             padding: "5rem 0",
-            background: "linear-gradient(135deg, rgba(0, 208, 132, 0.08), rgba(59, 130, 246, 0.05))",
+            background: "linear-gradient(135deg, rgba(0, 82, 156, 0.07), rgba(0, 82, 156, 0.02))",
             borderTop: "1px solid var(--bg-border)",
           }}
         >
